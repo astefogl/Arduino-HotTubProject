@@ -1,0 +1,61 @@
+<!DOCTYPE html> 
+<html>
+    <head>
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">
+        <title>" + Instance->_localServerSSid + "</title>
+        <style>
+            html { 
+                font-family: Helvetica; 
+                display: inline-block; 
+                margin: 0px auto; 
+                text-align: center;
+            }
+            body {
+                margin-top: 50px;
+            } 
+            h1 {
+                color: #444444;
+                margin: 50px auto 30px;
+            } 
+            h3 {
+                color: #444444;
+                margin-bottom: 50px;
+            }
+            p {
+                font-size: 14px;
+                color: #888;
+                margin-bottom: 10px;
+            }
+            .displayPasswordSvg { top: 8px; position: relative; }
+            .hidden { display: none; }
+        </style>
+        <script>
+            function togglePasswords() {
+                var el = document.querySelector("#passwordInput");
+                if (el.type == 'password') { el.type = 'text'; } else { el.type = 'password'; }
+            }
+            function toggleSsid() {
+                document.querySelector("#ssidSelector").classList.toggle('hidden');
+                document.querySelector("#ssidInput").classList.toggle('hidden');
+            }
+        </script>
+    </head>
+    <body>
+        <h1>" + Instance->_localServerSSid + "</h1>
+        <form action="/save" method="POST">
+            <div>
+                <h3>Enter Network Credentials</h3>
+                <div id="ssidSelector"><label>Ssid:</label><select name="ssid" >
+                    <option value="ORBI36">ORBI36</option>
+                </select></div>
+                <div id="ssidInput" class="hidden"><label>Ssid: </label><input type="text" name="ssid"/><br></div>
+                <div><input type="checkbox" id="ssidToggle" onclick="toggleSsid()"/><label>Enter Ssid Manually</label></div>
+                <div>
+                    <label>Password:</label><input type="password" id="passwordInput" name="password">   
+                    <svg class="displayPasswordSvg" onclick="togglePasswords()" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M12.015 7c4.751 0 8.063 3.012 9.504 4.636-1.401 1.837-4.713 5.364-9.504 5.364-4.42 0-7.93-3.536-9.478-5.407 1.493-1.647 4.817-4.593 9.478-4.593zm0-2c-7.569 0-12.015 6.551-12.015 6.551s4.835 7.449 12.015 7.449c7.733 0 11.985-7.449 11.985-7.449s-4.291-6.551-11.985-6.551zm-.015 3c-2.21 0-4 1.791-4 4s1.79 4 4 4c2.209 0 4-1.791 4-4s-1.791-4-4-4zm-.004 3.999c-.564.564-1.479.564-2.044 0s-.565-1.48 0-2.044c.564-.564 1.479-.564 2.044 0s.565 1.479 0 2.044z"/></svg>
+                </div>
+            </div>
+            <br/><input type="submit" value="Submit">
+        </form>
+    </body>
+</html>

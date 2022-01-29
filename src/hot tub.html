@@ -1,0 +1,94 @@
+<!DOCTYPE html><html>
+    <head>
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">
+        <title>Hot Tub Controller</title>
+        <style>
+            html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }
+            .container { text-align: right; width: fit-content; margin-left: auto; margin-right: auto; }
+            .container__adjustTemp { margin-top: 20px; text-align: center; }
+            .arrow { max-width: 30px; }
+        </style>
+        <script>
+            const changeTemp = (adjustment) => { var el = document.querySelector('#adjustTemp'); var temp = parseInt(el.innerHTML); adjustment = parseInt(adjustment); el.innerHTML = temp + adjustment; };
+            const ajaxPost = (url, send, onSuccess, onFail) => { var xhr = new XMLHttpRequest(); xhr.open('POST', url); xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); return; } onFail(); }; xhr.send(send); };
+            const ajaxGet = (url, onSuccess) => { var xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); } }; xhr.send(); };
+            const updateTemp = () => { console.log('Update Temp'); var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };
+            const getTemp = () => { const onSuccess = (response) => { waterTemp(response.waterTemp); setTemp(response.setTemp); }; ajaxGet('/get/temp', onSuccess); };
+            const setTemp = (temp) => { document.querySelector('#setTemp').innerHTML = temp; };
+            const waterTemp = (temp) => { document.querySelector('#waterTemp').innerHTML = temp; };
+            setInterval(getTemp, 10000);
+            
+            const ajaxPost = (url, send, onSuccess, onFail) => { 
+                var xhr = new XMLHttpRequest(); 
+                xhr.open('POST', url);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onload = () => { 
+                    if (xhr.status === 200) { 
+                        var response = JSON.parse(xhr.responseText);
+                        onSuccess(response);
+                        return;
+                    } 
+                    onFail();
+                };
+                xhr.send(send);
+            };
+
+            const ajaxGet = (url, onSuccess) => {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', url);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.onload = () => {
+                    if (xhr.status === 200) {
+                        var response = JSON.parse(xhr.responseText);
+                        onSuccess(response);
+                    }
+                };
+                xhr.send();
+            };
+            
+            const updateTemp = () => {
+                console.log('Update Temp');
+                var el = document.querySelector('#adjustTemp'); 
+                var temp = parseInt(el.innerHTML);
+                var url = '/update/temp';
+                var send = 'newSetTemp=' + temp;
+                const onSuccess = (response) => { setTemp(response.setTemp); },
+                    onFail = () => { console.log('update failed'); };
+                ajaxPost(url, send, onSuccess, onFail);
+            };
+
+            const getTemp = () => {
+                const onSuccess = (response) => {
+                    waterTemp(response.waterTemp);
+                    setTemp(response.setTemp);
+                };
+                ajaxGet('/get/temp', onSuccess);
+            };
+
+            const setTemp = (temp) => {
+                console.log(temp);
+                document.querySelector('#setTemp').innerHTML = temp;
+            };
+
+            const waterTemp = (temp) => {
+                document.querySelector('#waterTemp').innerHTML = temp;
+            };
+        
+            setInterval(getTemp, 10000);
+        </script>
+    </head>
+    <body>
+        <h1>Hot Tub Controls</h1>
+        <div class="container">
+            <span>Water Temp: </span><span id="waterTemp">100</span><span>°F</span><br/>
+            <span>Current Set Temp: </span><span id="setTemp">103</span><span>°F</span>
+        
+            <div class="container__adjustTemp">
+                <span>Adjust Temperature: </span><span id="adjustTemp">103</span><span>°F</span><br/>
+                <svg class="arrow" onclick="changeTemp(1)" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 49.656 49.656" style="enable-background:new 0 0 49.656 49.656;" xml:space="preserve"><g><polygon style="fill:#00AD97;" points="48.242,35.122 45.414,37.95 24.828,17.364 4.242,37.95 1.414,35.122 24.828,11.707 	"/><path style="fill:#00AD97;" d="M45.414,39.363L24.828,18.778L4.242,39.363L0,35.121l24.828-24.828l24.828,24.828L45.414,39.363z M24.828,15.95l20.586,20.585l1.414-1.414l-22-22l-22,22l1.414,1.414L24.828,15.95z"/></g></svg>
+                <svg class="arrow" onclick="changeTemp(-1)" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 49.656 49.656" style="enable-background:new 0 0 49.656 49.656;" xml:space="preserve"><g><polygon style="fill:#00AD97;" points="1.414,14.535 4.242,11.707 24.828,32.292 45.414,11.707 48.242,14.535 24.828,37.95 "/><path style="fill:#00AD97;" d="M24.828,39.364L0,14.536l4.242-4.242l20.586,20.585l20.586-20.586l4.242,4.242L24.828,39.364z M2.828,14.536l22,22l22-22.001l-1.414-1.414L24.828,33.707L4.242,13.122L2.828,14.536z"/></g></svg><br>
+                <input type="button" value="Set Temp" onclick="updateTemp()">
+            </div>
+        </div>
+    </body>
+</html>
