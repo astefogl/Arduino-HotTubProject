@@ -2,7 +2,12 @@
 #include <WiFi.h>
 #include "CommonWifiManager.h"
 #include "ThermistorSensor.h"
-
+#include <TFT_eSPI.h> // Hardware-specific library
+#include <SPI.h>
+#include "temperatureImages.h"
+#include <SimpleTimer.h>
+// #include "NotoSansBold15.h"
+// #include "NotoSansBold36.h"
 /*
 screen pinout
 DIN -> d23
@@ -14,7 +19,7 @@ BUSY -> d4
 */
 
 
-/* #region Hot Tub Controller Variables */
+ /* #region Hot Tub Controller Variables */
 // which analog pin to connect
 #define THERMISTORPIN 34         
 #define NUMSAMPLES 30
@@ -26,7 +31,7 @@ BUSY -> d4
 #define pump2Button 39 //33
 #define ledButton 35 //32
 
-#define SHORT_BUTTON_PRESS_DELAY 200
+#define SHORT_BUTTON_PRESS_DELAY 300
 #define LONG_BUTTON_PRESS_DELAY 1000
 unsigned long lastTempUpButtonPress = 0;
 unsigned long lastTempDownButtonPress = 0;
@@ -49,13 +54,25 @@ unsigned long lastLedButtonPress = 0;
 int setTemperature;
 int restartHeaterTemperature;
 float currentTemperature;
+int lastDisplayedTemperature = 0;
+int lastSetTemperature = 0;
 bool heaterAndPump1LowOn;
 bool pump1HighOn;
 bool pump2On;
 bool ledOn;
 char degreesSymbol = char(176);
+bool wifiConnected = false;
+uint16_t tempIcon[434];
+int iconState = 0;
+int yPosCurrentTemp = 25;
+int yPosSetTemp = 70;
+enum iconStates { iconTempOff, iconTempLow, iconTemp1, iconTemp2, iconTemp3, iconTempHigh }; 
+
+int maxTemp = 104;
+int minTemp = 60;
 
 ThermistorSensor thermistor(THERMISTORPIN);
+TFT_eSPI tft = TFT_eSPI();
 /* #endregion */
 
 /* #region Wifi Variables*/
@@ -71,6 +88,7 @@ String password;
 
 TaskHandle_t hotTubControllerTask;
 TaskHandle_t wifiTask;
+SimpleTimer timer;
 
 /* #region Hot Tub Controller Interupts*/
 bool checkLastButtonPush(unsigned long lastPressTime, int delay) {
@@ -81,49 +99,61 @@ bool checkLastButtonPush(unsigned long lastPressTime, int delay) {
 }
 
 void IRAM_ATTR tempUp() {
-  if (checkLastButtonPush(lastTempUpButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
-    Serial.println("TempUp");
-    setTemperature += 1;
-    restartHeaterTemperature = setTemperature;
-    lastTempUpButtonPress = millis();
+  if (digitalRead(tempUpButton) == HIGH) {
+    if (checkLastButtonPush(lastTempUpButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
+      Serial.println("TempUp");
+      if (setTemperature + 1 <= maxTemp) {
+        setTemperature += 1;
+        restartHeaterTemperature = setTemperature;
+      }
+      lastTempUpButtonPress = millis();
+    }
   }
 }
 
 void IRAM_ATTR tempDown() {
-  if (checkLastButtonPush(lastTempDownButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
-    Serial.println("TempDown");
-    setTemperature -= 1;
-    restartHeaterTemperature = setTemperature;
-    lastTempDownButtonPress = millis();
+  if (digitalRead(tempDownButton) == HIGH) {
+    if (checkLastButtonPush(lastTempDownButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
+      Serial.println("TempDown");
+      if (setTemperature - 1 >= minTemp) {
+        setTemperature -= 1;
+        restartHeaterTemperature = setTemperature;
+      }
+      lastTempDownButtonPress = millis();
+    }
   }
 }
 
 void IRAM_ATTR pump1Toggle() {
-  if (checkLastButtonPush(lastPump1ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-    Serial.println("pump1Toggle");
-    lastPump1ButtonPress = millis();
+  if (digitalRead(pump1Button) == HIGH) {
+    if (checkLastButtonPush(lastPump1ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
+      Serial.println("pump1Toggle");
+      lastPump1ButtonPress = millis();
 
-    if (pump1HighOn) {
-      digitalWrite(pump1HighPin, LOW);
-      pump1HighOn = false;
-    } else {
-      digitalWrite(pump1HighPin, HIGH);
-      pump1HighOn = true;
+      if (pump1HighOn) {
+        digitalWrite(pump1HighPin, LOW);
+        pump1HighOn = false;
+      } else {
+        digitalWrite(pump1HighPin, HIGH);
+        pump1HighOn = true;
+      }
     }
   }
 }
 
 void IRAM_ATTR pump2Toggle() {
-  if (checkLastButtonPush(lastPump2ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-    Serial.println("pump2Toggle");
-    lastPump2ButtonPress = millis();
+  if (digitalRead(pump2Button) == HIGH) {
+    if (checkLastButtonPush(lastPump2ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
+      Serial.println("pump2Toggle");
+      lastPump2ButtonPress = millis();
 
-    if (pump2On) {
-      digitalWrite(pump2Pin, LOW);
-      pump2On = false;
-    } else {
-      digitalWrite(pump2Pin, HIGH);
-      pump2On = true;
+      if (pump2On) {
+        digitalWrite(pump2Pin, LOW);
+        pump2On = false;
+      } else {
+        digitalWrite(pump2Pin, HIGH);
+        pump2On = true;
+      }
     }
   }
 }
@@ -180,6 +210,17 @@ void setup(void) {
   attachInterrupt(pump2Button, pump2Toggle, RISING);
   attachInterrupt(ledButton, ledToggle, RISING);
 
+  tft.init();
+  tft.setRotation(3);
+  tft.setTextWrap(false);
+  tft.fillScreen(TFT_BLACK);
+  // tft.fillScreen(TFT_WHITE);
+  tft.setSwapBytes(true);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  timer.setInterval(300, changeTempIcon); // 300 = .3 sec
+  timer.setInterval(1000, updateTemp); // 1 sec
+
   xTaskCreatePinnedToCore(
     hotTubControllerTaskCode,   /* Task function. */
     "hotTubControllerTask",     /* name of task. */
@@ -196,7 +237,7 @@ void setup(void) {
     NULL,        /* parameter of the task */
     1,           /* priority of the task */
     &wifiTask,      /* Task handle to keep track of created task */
-    1);          /* pin task to core 0 */  
+    1);          /* pin task to core 0 */ 
 }
 
 void loop(void) {
@@ -206,20 +247,102 @@ void loop(void) {
 /* #region Hot Tub Controller */ 
 void hotTubControllerTaskCode( void * pvParameters ){
   for (;;) {
-    readTemp();
-    checkPumpAndHeater();
-    
-    Serial.print("Temperature "); 
-    Serial.print(currentTemperature);
-    Serial.println(" *F");
-    Serial.print("Set Temp: "); 
-    Serial.print(setTemperature);
-    Serial.println(" *F");
-    Serial.print("Restart Heater Temp: "); 
-    Serial.print(restartHeaterTemperature);
-    Serial.println(" *F");
+    timer.run();
+    delay(10);
+  }
+}
 
-    delay(2000);
+void updateTemp() {
+  checkTemps();
+  readTemp();
+  checkPumpAndHeater();
+
+  bool lastTempChanged = false;
+
+  if (lastDisplayedTemperature != (int)currentTemperature) {
+    int xPosCurrentTemp = 110;
+    tft.setTextFont(4);
+    tft.setTextSize(1);
+    tft.setCursor(xPosCurrentTemp - 5, yPosCurrentTemp); 
+    tft.print(" `F");
+
+    tft.setTextDatum(TR_DATUM);
+    int temp = currentTemperature;
+    char tempString [5];
+    tft.setTextSize(2);
+    tft.fillRect(xPosCurrentTemp - 90, yPosCurrentTemp, 80, 52, TFT_BLACK);
+    // tft.drawString("100", xPosCurrentTemp, yPosCurrentTemp);
+    tft.drawString(itoa(temp, tempString, 10), xPosCurrentTemp, yPosCurrentTemp);
+    lastDisplayedTemperature = temp;
+    lastTempChanged = true;
+  }
+  if (lastSetTemperature != (int)setTemperature || lastTempChanged) {
+    int xPosSetTemp = 90;
+    tft.setTextFont(4);
+    tft.setTextSize(1);
+    tft.setCursor(xPosSetTemp - 2, yPosSetTemp);
+    tft.print(" `F");
+
+    tft.setTextDatum(TR_DATUM);
+    int temp = setTemperature;
+    char tempString [5];
+    tft.fillRect(xPosSetTemp - 67, yPosSetTemp, 60, 26, TFT_BLACK);
+    tft.drawString(itoa(temp, tempString, 10), xPosSetTemp, yPosSetTemp);
+    lastDisplayedTemperature = temp;
+  }
+
+  // Serial.print("Temperature "); 
+  // Serial.print(currentTemperature);
+  // Serial.println(" *F");
+  // Serial.print("Set Temp: "); 
+  // Serial.print(setTemperature);
+  // Serial.println(" *F");
+  // Serial.print("Restart Heater Temp: "); 
+  // Serial.print(restartHeaterTemperature);
+  // Serial.println(" *F");
+}
+
+void checkTemps() {
+  if (maxTemp < setTemperature) {
+    setTemperature = maxTemp;
+  }
+  if (minTemp > setTemperature) {
+    setTemperature = minTemp;
+  }
+}
+
+void changeTempIcon() {
+  int xPos = 135;
+  int yPos = 33;
+  int width = 14;
+  int height = 31;
+
+  if (heaterAndPump1LowOn) {
+    switch (iconState) {
+      case iconTempOff:
+        iconState++;
+      case iconTempLow:
+        tft.pushImage(xPos, yPos, width, height, tempLow);
+        break;
+      case iconTemp1:
+        tft.pushImage(xPos, yPos, width, height, temp1);
+        break;
+      case iconTemp2:
+        tft.pushImage(xPos, yPos, width, height, temp2);
+        break;
+      case iconTemp3:
+        tft.pushImage(xPos, yPos, width, height, temp3);
+        break;
+      case iconTempHigh:
+        tft.pushImage(xPos, yPos, width, height, tempHigh);
+        iconState = iconTempOff;
+        break;
+    } 
+    iconState++;
+  } else {
+    if (iconState != iconTempOff) {
+      tft.fillRect(xPos, yPos, width, height, TFT_BLACK);
+    }
   }
 }
 
@@ -256,6 +379,8 @@ void wifiTaskCode( void * pvParameters ){
   
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
+      wifiConnected = false;
+      printIpOnDisplay(wifiConnected);
       Serial.println("Server Close");
       server.close();
       wifiManager.connectToNetwork();
@@ -263,16 +388,33 @@ void wifiTaskCode( void * pvParameters ){
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("Server Begin");
       server.begin();
+      if (wifiConnected == false) {
+        wifiConnected = true;
+        printIpOnDisplay(wifiConnected);
+      }
       for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
+          wifiConnected = false;
+          printIpOnDisplay(wifiConnected);
           break;
-        }
+        }   
         delay(2); 
         server.handleClient();
       } 
     }
-
     delay(2);
+  }
+}
+
+void printIpOnDisplay(bool wifiConnected)
+{
+  tft.fillRect (45, 120, 100, 8, TFT_BLACK);
+  if (wifiConnected) {
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextSize(1);
+    tft.setTextFont(1);
+    tft.drawString("IP: " + WiFi.localIP().toString(), 160, 120);
   }
 }
 
@@ -333,7 +475,12 @@ String landingPageHtml()
   html += ".arrow { max-width: 30px; }\n";
   html += "</style>\n";
   html += "<script>\n";
-  html += "const changeTemp = (adjustment) => { var el = document.querySelector('#adjustTemp'); var temp = parseInt(el.innerHTML); adjustment = parseInt(adjustment); el.innerHTML = temp + adjustment; };\n";
+  html += "const changeTemp = (adjustment) => { var el = document.querySelector('#adjustTemp'); var temp = parseInt(el.innerHTML); adjustment = parseInt(adjustment);\n";
+  html += "if (temp + adjustment <= ";
+  html += maxTemp;
+  html += " && temp + adjustment >= ";
+  html += minTemp;
+  html += ") { el.innerHTML = temp + adjustment }; };\n";
   html += "const ajaxPost = (url, send, onSuccess, onFail) => { var xhr = new XMLHttpRequest(); xhr.open('POST', url); xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); return; } onFail(); }; xhr.send(send); };\n";
   html += "const ajaxGet = (url, onSuccess) => { var xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); } }; xhr.send(); };\n";
   html += "const updateTemp = () => { console.log('Update Temp'); var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
