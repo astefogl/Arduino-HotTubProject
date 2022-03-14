@@ -271,7 +271,6 @@ void updateTemp() {
     char tempString [5];
     tft.setTextSize(2);
     tft.fillRect(xPosCurrentTemp - 90, yPosCurrentTemp, 80, 52, TFT_BLACK);
-    // tft.drawString("100", xPosCurrentTemp, yPosCurrentTemp);
     tft.drawString(itoa(temp, tempString, 10), xPosCurrentTemp, yPosCurrentTemp);
     lastDisplayedTemperature = temp;
     lastTempChanged = true;
@@ -375,6 +374,7 @@ void wifiTaskCode( void * pvParameters ){
   
   server.on("/", handleLandingPage);
   server.on("/update/temp", HTTP_POST, handleUpdateTemp);
+  server.on("/update/pump/status", HTTP_POST, handlePumpStatus);
   server.on("/get/temp", HTTP_GET, handleGetTemp);
   
   for (;;) {
@@ -400,6 +400,19 @@ void wifiTaskCode( void * pvParameters ){
         }   
         delay(2); 
         server.handleClient();
+        
+        /*
+        long rssi = 0;
+        for (int i=0;i < 10; i++){
+          rssi += WiFi.RSSI();
+          delay(20);
+        }
+
+        long averageRSSI = rssi/10;
+        Serial.print("Signal Strength");
+        Serial.println(averageRSSI);
+        */
+
       } 
     }
     delay(2);
@@ -423,14 +436,20 @@ void handleGetTemp() {
   strReturn += setTemperature;
   strReturn += "\", \"waterTemp\": \"";
   strReturn += currentTemperature;
+  strReturn += "\", \"heaterStatus\": \"";
+  strReturn += heaterAndPump1LowOn ? "On" : "Off";
   strReturn += "\"}";
   server.send(200, "application/json", strReturn);
 }
 
 void handleUpdateTemp() {
   int numArgs = server.args();
+  String strReturn;
+  int returnCode = 200;
   if (numArgs == 0) {
     Serial.println("BAD ARGS");
+    strReturn = "{\"message\": \"Temp update failed\"}";
+    returnCode = 500;
   } else {
     for (int i = 0; i < numArgs; i++) {
       Serial.print(server.argName(i));
@@ -445,12 +464,49 @@ void handleUpdateTemp() {
         Serial.println(restartHeaterTemperature);
       }
     }
+    strReturn = "{\"setTemp\": \"";
+    strReturn += setTemperature;
+    strReturn += "\", \"message\": \"Temp Updated\"}";
   }
-  
-  String strReturn = "{\"setTemp\": \"";
-  strReturn += setTemperature;
-  strReturn += "\", \"message\": \"Temp Updated\"}";
-  server.send(200, "application/json", strReturn);
+
+  server.send(returnCode, "application/json", strReturn);
+}
+
+void handlePumpStatus() {
+  int numArgs = server.args();
+  int pumpNum = 0;
+  int pumpStatus = 0;
+  String strReturn;
+  int returnCode = 200;
+
+  if (numArgs == 0) {
+    Serial.println("BAD ARGS");
+  } else {
+    for (int i = 0; i < numArgs; i++) {
+      if (server.argName(i) == "pumpNum") {
+        pumpNum = server.arg(i).toInt();
+      }
+      if (server.argName(i) == "pumpStatus") {
+        pumpStatus = server.arg(i).toInt();
+      }
+    }
+    switch (pumpNum) {
+      case 1: 
+        pump1HighOn = pumpStatus;
+        break;
+      case 2:
+        pump2On = pumpStatus;
+        break;
+    }
+
+    strReturn = "{\"pumpNum\": \"";
+    strReturn += pumpNum;
+    strReturn += "\", \"status\": \"";
+    strReturn += pumpStatus;
+    strReturn += "\", \"message\": \"Pump Status Updated\"}";
+  }
+
+  server.send(returnCode, "application/json", strReturn);
 }
 
 void handleLandingPage() {
@@ -471,10 +527,15 @@ String landingPageHtml()
   html += "<style>\n";
   html += "html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }\n";
   html += ".container { text-align: right; width: fit-content; margin-left: auto; margin-right: auto; }\n";
-  html += ".container__adjustTemp { margin-top: 20px; text-align: center; }\n";
+  html += ".container__center { margin-top: 20px; text-align: center; }\n";
   html += ".arrow { max-width: 30px; }\n";
   html += "</style>\n";
   html += "<script>\n";
+  html += "var pump1Status = ";
+  html += pump1HighOn ? 1 : 0;
+  html += "; var pump2Status = ";
+  html += pump2On ? 1 : 0;
+  html += ";\n";
   html += "const changeTemp = (adjustment) => { var el = document.querySelector('#adjustTemp'); var temp = parseInt(el.innerHTML); adjustment = parseInt(adjustment);\n";
   html += "if (temp + adjustment <= ";
   html += maxTemp;
@@ -483,10 +544,13 @@ String landingPageHtml()
   html += ") { el.innerHTML = temp + adjustment }; };\n";
   html += "const ajaxPost = (url, send, onSuccess, onFail) => { var xhr = new XMLHttpRequest(); xhr.open('POST', url); xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); return; } onFail(); }; xhr.send(send); };\n";
   html += "const ajaxGet = (url, onSuccess) => { var xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); } }; xhr.send(); };\n";
-  html += "const updateTemp = () => { console.log('Update Temp'); var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
-  html += "const getTemp = () => { const onSuccess = (response) => { waterTemp(response.waterTemp); setTemp(response.setTemp); }; ajaxGet('/get/temp', onSuccess); };\n";
+  html += "const updateTemp = () => { var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
+  html += "const getTemp = () => { const onSuccess = (response) => { console.log(response); waterTemp(response.waterTemp); setTemp(response.setTemp); updateHeaterStatus(response.heaterStatus); }; ajaxGet('/get/temp', onSuccess); };\n";
   html += "const setTemp = (temp) => { document.querySelector('#setTemp').innerHTML = temp; };\n";
   html += "const waterTemp = (temp) => { document.querySelector('#waterTemp').innerHTML = temp; };\n";
+  html += "const togglePump = (pumpNum) => { var pumpStatus = pumpNum == 1 ? pump1Status : pump2Status; pumpStatus = pumpStatus == 1 ? 0 : 1;  var url = '/update/pump/status'; var send = 'pumpNum=' + pumpNum + '&pumpStatus=' + pumpStatus; const onSuccess = (response) => { console.log(response); updateButton(response.pumpNum, response.status) }, onFail = () => { console.log('pump ' + pumpNum + ' toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
+  html += "const updateButton = (pumpNum, status) => { var statusString = status == 0 ? 'Turn On' : 'Turn Off'; var value = statusString + ' Pump ' + pumpNum; switch (pumpNum) { case '1': pump1Status = status; break; case '2': pump2Status = status; }; document.querySelector('#button-pump' + pumpNum).value =  value; };\n";
+  html += "const updateHeaterStatus = (status) => { document.querySelector('#heaterStatusValue').innerHTML = status; };\n";
   html += "setInterval(getTemp, 10000);\n";
   html += "</script>\n";
   html += "</head>\n";
@@ -503,7 +567,7 @@ String landingPageHtml()
   html += "</span><span>";
   html += degreesSymbol;
   html += "F</span>\n";
-  html += "<div class=\"container__adjustTemp\">\n";
+  html += "<div class=\"container__center\">\n";
   html += "<span>Adjust Temperature: </span><span id=\"adjustTemp\">";
   html += setTemperature;
   html += "</span><span>";
@@ -513,6 +577,17 @@ String landingPageHtml()
   html += "<svg class=\"arrow\" onclick=\"changeTemp(-1)\" version=\"1.1\" id=\"Capa_1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" x=\"0px\" y=\"0px\" viewBox=\"0 0 49.656 49.656\" style=\"enable-background:new 0 0 49.656 49.656;\" xml:space=\"preserve\"><g><polygon style=\"fill:#00AD97;\" points=\"1.414,14.535 4.242,11.707 24.828,32.292 45.414,11.707 48.242,14.535 24.828,37.95 \"/><path style=\"fill:#00AD97;\" d=\"M24.828,39.364L0,14.536l4.242-4.242l20.586,20.585l20.586-20.586l4.242,4.242L24.828,39.364z M2.828,14.536l22,22l22-22.001l-1.414-1.414L24.828,33.707L4.242,13.122L2.828,14.536z\"/></g></svg><br>\n";
   html += "<input type=\"button\" value=\"Set Temp\" onclick=\"updateTemp()\">\n";
   html += "</div>\n";
+  html += "</div>\n";
+  html += "<div class=\"container__center\">\n";
+  html += "<span>Heater Status: </span><span id=\"heaterStatusValue\">";
+  html += heaterAndPump1LowOn ? "On" : "Off";
+  html += "</span><br><br>\n";
+  html += "<input type=\"button\" id=\"button-pump1\" value=\"Turn ";
+  html += pump1HighOn ? "Off" : "On"; 
+  html += " Pump 1\" onclick=\"togglePump(1)\">\n";
+  html += "<input type=\"button\" id=\"button-pump2\" value=\"Turn ";
+  html += pump2On ? "Off" : "On"; 
+  html += " Pump 2\" onclick=\"togglePump(2)\">\n";
   html += "</div>\n";
   html += "</body>\n";
   html += "</html>\n";
