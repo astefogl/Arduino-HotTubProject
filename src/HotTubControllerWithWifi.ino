@@ -19,7 +19,7 @@ BUSY -> d4
 */
 
 
- /* #region Hot Tub Controller Variables */
+/* #region Hot Tub Controller Variables */
 // which analog pin to connect
 #define THERMISTORPIN 34         
 #define NUMSAMPLES 30
@@ -44,6 +44,22 @@ unsigned long lastLedButtonPress = 0;
 #define heaterPin 32 // 23 
 #define pump2Pin 33 // 22
 //#define ledRelayPin 5
+
+// led colors
+#define ledRedPin 22
+#define ledGreenPin 21
+#define ledBluePin 19
+#define ledRedChannel 2
+#define ledGreenChannel 3
+#define ledBlueChannel 1
+#define defaultWhiteRedValue 50
+#define defaultWhiteGreenValue 255
+#define defaultWhiteBlueValue 100
+
+int ledRedValue = 0;
+int ledBlueValue = 0;
+int ledGreenValue = 0;
+
 //---Relay Control Setup End ---//
 
 //---Preferred Settings---//
@@ -56,9 +72,14 @@ int restartHeaterTemperature;
 float currentTemperature;
 int lastDisplayedTemperature = 0;
 int lastSetTemperature = 0;
-bool heaterAndPump1LowOn;
+bool heaterOn;
+bool pump1LowOn;
 bool pump1HighOn;
 bool pump2On;
+bool heaterToggled = false;
+bool pump1LowToggled = false;
+bool pump1HighToggled = false;
+bool pump2Toggled = false;
 bool ledOn;
 char degreesSymbol = char(176);
 bool wifiConnected = false;
@@ -68,7 +89,7 @@ int yPosCurrentTemp = 25;
 int yPosSetTemp = 70;
 enum iconStates { iconTempOff, iconTempLow, iconTemp1, iconTemp2, iconTemp3, iconTempHigh }; 
 
-int maxTemp = 104;
+int maxTemp = 107;
 int minTemp = 60;
 
 ThermistorSensor thermistor(THERMISTORPIN);
@@ -96,6 +117,46 @@ bool checkLastButtonPush(unsigned long lastPressTime, int delay) {
     return true;
   }
   return false;
+}
+
+void togglePump1Low(bool state) {
+  if (state) {
+    pump1LowToggled = true;
+    digitalWrite(pump1LowPin, HIGH);
+  } else {
+    pump1LowToggled = false;
+    digitalWrite(pump1LowPin, LOW);
+  }
+}
+
+void togglePump1High(bool state) {
+  if (state) {
+    pump1HighToggled = true;
+    digitalWrite(pump1HighPin, HIGH);
+  } else {
+    pump1HighToggled = false;
+    digitalWrite(pump1HighPin, LOW);
+  }
+}
+
+void togglePump2(bool state) {
+  if (state) {
+    pump2Toggled = true;
+    digitalWrite(pump2Pin, HIGH);
+  } else {
+    pump2Toggled = false;
+    digitalWrite(pump2Pin, LOW);
+  }
+}
+
+void toggleHeater(bool state) {
+  if (state) {
+    heaterToggled = true;
+    digitalWrite(heaterPin, HIGH);
+  } else {
+    heaterToggled = false;
+    digitalWrite(heaterPin, LOW);
+  }
 }
 
 void IRAM_ATTR tempUp() {
@@ -131,10 +192,9 @@ void IRAM_ATTR pump1Toggle() {
       lastPump1ButtonPress = millis();
 
       if (pump1HighOn) {
-        digitalWrite(pump1HighPin, LOW);
+        togglePump1High(false);
         pump1HighOn = false;
       } else {
-        digitalWrite(pump1HighPin, HIGH);
         pump1HighOn = true;
       }
     }
@@ -148,10 +208,9 @@ void IRAM_ATTR pump2Toggle() {
       lastPump2ButtonPress = millis();
 
       if (pump2On) {
-        digitalWrite(pump2Pin, LOW);
+        togglePump2(false);
         pump2On = false;
       } else {
-        digitalWrite(pump2Pin, HIGH);
         pump2On = true;
       }
     }
@@ -181,7 +240,7 @@ void setup(void) {
   setTemperature = DEFAULTTEMPERATURE;
   restartHeaterTemperature = setTemperature;
   currentTemperature = 0;
-  heaterAndPump1LowOn = false;
+  heaterOn = false;
   pump1HighOn = false;
   pump2On = false;
   ledOn = false;
@@ -198,11 +257,20 @@ void setup(void) {
   pinMode(pump2Pin, OUTPUT);
   //pinMode(ledRelay, OUTPUT);
 
-  digitalWrite(pump1LowPin, LOW);
-  digitalWrite(pump1HighPin, LOW);
-  digitalWrite(heaterPin, LOW);
-  digitalWrite(pump2Pin, LOW);
-  //digitalWrite(ledRelay, LOW);
+  ledcAttachPin(ledBluePin, 1);
+  ledcAttachPin(ledRedPin, 2);
+  ledcAttachPin(ledGreenPin, 3);
+
+  ledcSetup(1, 12000, 8); // 12 kHz PWM, 8-bit resolution
+  ledcSetup(2, 12000, 8);
+  ledcSetup(3, 12000, 8);
+
+  updateLedColors();
+
+  togglePump1Low(false);
+  togglePump1High(false);
+  togglePump2(false);
+  toggleHeater(false);
 
   attachInterrupt(tempUpButton, tempUp, RISING);
   attachInterrupt(tempDownButton, tempDown, RISING);
@@ -220,6 +288,7 @@ void setup(void) {
 
   timer.setInterval(300, changeTempIcon); // 300 = .3 sec
   timer.setInterval(1000, updateTemp); // 1 sec
+  timer.setInterval(1000, toggleRelay); // 1 sec
 
   xTaskCreatePinnedToCore(
     hotTubControllerTaskCode,   /* Task function. */
@@ -249,6 +318,53 @@ void hotTubControllerTaskCode( void * pvParameters ){
   for (;;) {
     timer.run();
     delay(10);
+  }
+}
+
+void toggleRelay() {
+  if (!pump1LowOn)
+    togglePump1Low(false);
+  if (!heaterOn)
+    toggleHeater(false);
+  if (!pump1HighOn)
+    togglePump1High(false);
+  if (!pump2On)
+    togglePump2(false);
+    
+  // Serial.print("pump1Low On: ");
+  // Serial.print(pump1LowOn);
+  // Serial.print(" Toggled: ");
+  // Serial.println(pump1LowToggled);
+  // Serial.print("pump1High On: ");
+  // Serial.print(pump1HighOn);
+  // Serial.print(" Toggled: ");
+  // Serial.println(pump1HighToggled);
+  // Serial.print("pump2 On: ");
+  // Serial.print(pump2On);
+  // Serial.print(" Toggled: ");
+  // Serial.println(pump2Toggled);
+  // Serial.print("heater On: ");
+  // Serial.print(heaterOn);
+  // Serial.print(" Toggled: ");
+  // Serial.println(heaterToggled);
+
+  if (pump1LowOn && !pump1LowToggled) {
+    // Serial.print("pump1 On, Toggled: ");
+    // Serial.println(pump1LowOn, pump1LowToggled);
+    togglePump1Low(true);
+    return;
+  }
+  if (heaterOn && !heaterToggled) {
+    toggleHeater(true);
+    return;
+  }
+  if (pump1HighOn && !pump1HighToggled) {
+    togglePump1High(true);
+    return;
+  }
+  if (pump2On && !pump2Toggled) {
+    togglePump2(true);
+    return;
   }
 }
 
@@ -316,7 +432,7 @@ void changeTempIcon() {
   int width = 14;
   int height = 31;
 
-  if (heaterAndPump1LowOn) {
+  if (heaterOn) {
     switch (iconState) {
       case iconTempOff:
         iconState++;
@@ -347,17 +463,17 @@ void changeTempIcon() {
 
 void checkPumpAndHeater() {
   if (restartHeaterTemperature + 1 > currentTemperature) {
-    if (!heaterAndPump1LowOn) {
-      digitalWrite(pump1LowPin, HIGH);
-      digitalWrite(heaterPin, HIGH);
-      heaterAndPump1LowOn = true;
+    if (!heaterOn || !pump1LowOn) {
+      heaterOn = true;
+      pump1LowOn = true;
     }
   } else {
-    if (heaterAndPump1LowOn) {
-      digitalWrite(pump1LowPin, LOW);
-      digitalWrite(heaterPin, LOW);
+    if (heaterOn || pump1LowOn) {
+      togglePump1Low(false);
+      toggleHeater(false);
       restartHeaterTemperature = setTemperature - 3;
-      heaterAndPump1LowOn = false;
+      heaterOn = false;
+      pump1LowOn = false;
     }
   }
 }
@@ -365,6 +481,19 @@ void checkPumpAndHeater() {
 void readTemp(void) {
   float temp = thermistor.readTemp();
   currentTemperature = temp;
+}
+
+void updateLedColors() {
+  ledcWrite(ledBlueChannel, ledBlueValue);
+  ledcWrite(ledRedChannel, ledRedValue);
+  ledcWrite(ledGreenChannel, ledGreenValue);
+}
+
+int getLedStatus() {
+  if (ledBlueValue > 0 || ledRedValue > 0 || ledGreenValue > 0) {
+    return 1;
+  }
+  return 0;
 }
 /* #endregion */
 
@@ -375,7 +504,9 @@ void wifiTaskCode( void * pvParameters ){
   server.on("/", handleLandingPage);
   server.on("/update/temp", HTTP_POST, handleUpdateTemp);
   server.on("/update/pump/status", HTTP_POST, handlePumpStatus);
-  server.on("/get/temp", HTTP_GET, handleGetTemp);
+  server.on("/update/ledColor", HTTP_POST, handleColorUpdate);
+  server.on("/update/led/status", HTTP_POST, handleLedStatus);
+  server.on("/get/status", HTTP_GET, handleGetStatus);
   
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
@@ -431,13 +562,15 @@ void printIpOnDisplay(bool wifiConnected)
   }
 }
 
-void handleGetTemp() {
+void handleGetStatus() {
   String strReturn = "{\"setTemp\": \"";
   strReturn += setTemperature;
   strReturn += "\", \"waterTemp\": \"";
   strReturn += currentTemperature;
   strReturn += "\", \"heaterStatus\": \"";
-  strReturn += heaterAndPump1LowOn ? "On" : "Off";
+  strReturn += heaterOn ? "On" : "Off";
+  strReturn += "\", \"ledStatus\": \"";
+  strReturn += getLedStatus();
   strReturn += "\"}";
   server.send(200, "application/json", strReturn);
 }
@@ -509,6 +642,64 @@ void handlePumpStatus() {
   server.send(returnCode, "application/json", strReturn);
 }
 
+void handleLedStatus() {
+  int numArgs = server.args();
+  String strReturn;
+  int returnCode = 200;
+
+  if (numArgs == 0) {
+    Serial.println("BAD ARGS");
+    strReturn = "{\"message\": \"Temp update failed\"}";
+    returnCode = 500;
+  } else {
+    for (int i = 0; i < numArgs; i++) {
+      Serial.print(server.argName(i));
+      Serial.print(": ");
+      Serial.println(server.arg(i));
+      if (server.argName(i) == "ledStatus") {
+        int ledStatus = server.arg(i).toInt();
+        if (ledStatus == 1) {
+          ledBlueValue = defaultWhiteBlueValue;
+          ledRedValue = defaultWhiteRedValue;
+          ledGreenValue = defaultWhiteGreenValue;
+          updateLedColors();
+          Serial.println("Led default White Color On");
+        }
+        if (ledStatus == 0) {
+          ledBlueValue = 0;
+          ledRedValue = 0;
+          ledGreenValue = 0;
+          updateLedColors();
+          Serial.println("Leds off");
+        }
+      }
+    }
+  }
+
+  strReturn = "{\"blueValue\": \"";
+  strReturn += ledBlueValue;
+  strReturn += "\", \"redValue\": \"";
+  strReturn += ledRedValue;
+  strReturn += "\", \"greenValue\": \"";
+  strReturn += ledGreenValue;
+  strReturn += "\", \"status\": \"";
+  strReturn += getLedStatus();
+  strReturn += "\", \"message\": \"Led Status Updated\"}";
+
+  server.send(returnCode, "application/json", strReturn);
+}
+
+void handleColorUpdate() {
+  int returnCode = 200;
+  String strReturn;
+
+  strReturn = "{\"setLedColor\": \"";
+  strReturn += "some color combo";
+  strReturn += "\", \"message\": \"Led Color Updated Updated\"}";
+
+  server.send(returnCode, "application/json", strReturn);
+}
+
 void handleLandingPage() {
   server.send(200, "text/html", landingPageHtml());
 }
@@ -535,7 +726,9 @@ String landingPageHtml()
   html += pump1HighOn ? 1 : 0;
   html += "; var pump2Status = ";
   html += pump2On ? 1 : 0;
-  html += ";\n";
+  html += "; var ledStatus = ";
+  html += getLedStatus();
+  html += "; \n";
   html += "const changeTemp = (adjustment) => { var el = document.querySelector('#adjustTemp'); var temp = parseInt(el.innerHTML); adjustment = parseInt(adjustment);\n";
   html += "if (temp + adjustment <= ";
   html += maxTemp;
@@ -545,13 +738,15 @@ String landingPageHtml()
   html += "const ajaxPost = (url, send, onSuccess, onFail) => { var xhr = new XMLHttpRequest(); xhr.open('POST', url); xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); return; } onFail(); }; xhr.send(send); };\n";
   html += "const ajaxGet = (url, onSuccess) => { var xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); } }; xhr.send(); };\n";
   html += "const updateTemp = () => { var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
-  html += "const getTemp = () => { const onSuccess = (response) => { console.log(response); waterTemp(response.waterTemp); setTemp(response.setTemp); updateHeaterStatus(response.heaterStatus); }; ajaxGet('/get/temp', onSuccess); };\n";
+  html += "const getStatus = () => { const onSuccess = (response) => { waterTemp(response.waterTemp); setTemp(response.setTemp); updateHeaterStatus(response.heaterStatus); updateLedStatus(response.ledStatus); }; ajaxGet('/get/status', onSuccess); };\n";
   html += "const setTemp = (temp) => { document.querySelector('#setTemp').innerHTML = temp; };\n";
   html += "const waterTemp = (temp) => { document.querySelector('#waterTemp').innerHTML = temp; };\n";
-  html += "const togglePump = (pumpNum) => { var pumpStatus = pumpNum == 1 ? pump1Status : pump2Status; pumpStatus = pumpStatus == 1 ? 0 : 1;  var url = '/update/pump/status'; var send = 'pumpNum=' + pumpNum + '&pumpStatus=' + pumpStatus; const onSuccess = (response) => { console.log(response); updateButton(response.pumpNum, response.status) }, onFail = () => { console.log('pump ' + pumpNum + ' toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
-  html += "const updateButton = (pumpNum, status) => { var statusString = status == 0 ? 'Turn On' : 'Turn Off'; var value = statusString + ' Pump ' + pumpNum; switch (pumpNum) { case '1': pump1Status = status; break; case '2': pump2Status = status; }; document.querySelector('#button-pump' + pumpNum).value =  value; };\n";
+  html += "const togglePump = (pumpNum) => { var pumpStatus = pumpNum == 1 ? pump1Status : pump2Status; pumpStatus = pumpStatus == 1 ? 0 : 1; var url = '/update/pump/status'; var send = 'pumpNum=' + pumpNum + '&pumpStatus=' + pumpStatus; const onSuccess = (response) => { updateButton('Pump ' + response.pumpNum, response.status, '#button-pump' + response.pumpNum); }, onFail = () => { console.log('pump ' + pumpNum + ' toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
+  html += "const updateButton = (pump, status, button) => { var statusString = status == 0 ? 'Turn On ' : 'Turn Off '; var value = statusString + pump; switch (pump) { case 'Pump 1': pump1Status = status; break; case 'Pump 2': pump2Status = status; break; case 'Leds': ledStatus = status; break; }; document.querySelector(button).value = value; };\n";
   html += "const updateHeaterStatus = (status) => { document.querySelector('#heaterStatusValue').innerHTML = status; };\n";
-  html += "setInterval(getTemp, 10000);\n";
+  html += "const updateLedStatus = (status) => { document.querySelector('#ledStatusValue').innerHTML = status == 1 ? 'On' : 'Off'; };\n";
+  html += "const toggleLeds = () => { var url = '/update/led/status'; ledStatus = ledStatus == 1 ? 0 : 1; var send = 'ledStatus=' + ledStatus; const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, onFail = () => { console.log('led toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
+  html += "setInterval(getStatus, 10000);\n";
   html += "</script>\n";
   html += "</head>\n";
   html += "<body>\n";
@@ -580,7 +775,7 @@ String landingPageHtml()
   html += "</div>\n";
   html += "<div class=\"container__center\">\n";
   html += "<span>Heater Status: </span><span id=\"heaterStatusValue\">";
-  html += heaterAndPump1LowOn ? "On" : "Off";
+  html += heaterOn ? "On" : "Off";
   html += "</span><br><br>\n";
   html += "<input type=\"button\" id=\"button-pump1\" value=\"Turn ";
   html += pump1HighOn ? "Off" : "On"; 
@@ -588,6 +783,14 @@ String landingPageHtml()
   html += "<input type=\"button\" id=\"button-pump2\" value=\"Turn ";
   html += pump2On ? "Off" : "On"; 
   html += " Pump 2\" onclick=\"togglePump(2)\">\n";
+  html += "</div>\n";
+  html += "<div class=\"container__center\">\n";
+  html += "<span>Led Status: </span><span id=\"ledStatusValue\">";
+  html += getLedStatus() ? "On" : "Off";
+  html += "</span><br><br>\n";
+  html += "<input type=\"button\" id=\"button-led\" value=\"Turn ";
+  html += getLedStatus() ? "Off" : "On";
+  html += " Leds\" onclick=\"toggleLeds()\">\n";
   html += "</div>\n";
   html += "</body>\n";
   html += "</html>\n";
