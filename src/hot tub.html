@@ -18,11 +18,13 @@
             const setTemp = (temp) => { document.querySelector('#setTemp').innerHTML = temp; };
             const waterTemp = (temp) => { document.querySelector('#waterTemp').innerHTML = temp; };
             const togglePump = (pumpNum) => { var pumpStatus = pumpNum == 1 ? pump1Status : pump2Status; pumpStatus = pumpStatus == 1 ? 0 : 1; var url = '/update/pump/status'; var send = 'pumpNum=' + pumpNum + '&pumpStatus=' + pumpStatus; const onSuccess = (response) => { updateButton('Pump ' + response.pumpNum, response.status, '#button-pump' + response.pumpNum); }, onFail = () => { console.log('pump ' + pumpNum + ' toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };
-            const updateButton = (pump, status, button) => { var statusString = status == 0 ? 'Turn On ' : 'Turn Off '; var value = statusString + pump; switch (pump) { case 'Pump 1': pump1Status = status; break; case 'Pump 2': pump2Status = status; break; case 'Leds': ledStatus = status; break; }; document.querySelector(button).value = value; };
+            const updateButton = (pump, status, button) => { var statusString = status == 0 ? 'Turn On ' : 'Turn Off '; var value = statusString + pump; switch (pump) { case 'Pump 1': pump1Status = status; break; case 'Pump 2': pump2Status = status; break; case 'Leds': ledStatus = status; if (status == 0) value = statusString + 'White ' + pump; break; }; document.querySelector(button).value = value; };
             const updateHeaterStatus = (status) => { document.querySelector('#heaterStatusValue').innerHTML = status; };
             const updateLedStatus = (status) => { document.querySelector('#ledStatusValue').innerHTML = status == 1 ? 'On' : 'Off'; };
             const toggleLeds = () => { var url = '/update/led/status'; ledStatus = ledStatus == 1 ? 0 : 1; var send = 'ledStatus=' + ledStatus; const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, onFail = () => { console.log('led toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };
+            const updateLedColor = () => { var url = '/update/ledColor'; var ledContainer = document.querySelector('.container--leds'); var red = ledContainer.querySelector('#redled').value; var green = ledContainer.querySelector('#greenled').value; var blue = ledContainer.querySelector('#blueled').value; var send = 'red=' + red + '&green=' + green + '&blue=' + blue; const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, onFail = () => { console.log('Led color update failed'); }; ajaxPost(url, send, onSuccess, onFail); };
             setInterval(getStatus, 10000);
+
 
             /*
             const ajaxPost = (url, send, onSuccess, onFail) => { 
@@ -101,6 +103,7 @@
                         break;
                     case 'Leds':
                         ledStatus = status;
+                        if (status == 0) value = statusString + 'White ' + pump;
                         break;
                 };
                 document.querySelector(button).value = value;
@@ -132,6 +135,18 @@
                     onFail = () => { console.log('led toggle failed'); };
                 ajaxPost(url, send, onSuccess, onFail);
             };
+
+            const updateLedColor = () => {
+                var url = '/update/ledColor';
+                var ledContainer = document.querySelector('.container--leds');
+                var red = ledContainer.querySelector('#redled').value;
+                var green = ledContainer.querySelector('#greenled').value;
+                var blue = ledContainer.querySelector('#blueled').value;
+                var send = 'red=' + red + '&green=' + green + '&blue=' + blue;
+                const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, 
+                    onFail = () => { console.log('Led color update failed'); };
+                ajaxPost(url, send, onSuccess, onFail);
+            };
             */
             
         </script>
@@ -153,10 +168,17 @@
             <span>Heater Status: </span><span id="heaterStatusValue">On</span><br><br>
             <input type="button" id="button-pump1" value="Turn On Pump 1" onclick="togglePump(1)">
             <input type="button" id="button-pump2" value="Turn On Pump 2" onclick="togglePump(2)">
-        </div>
+        </div><br>
         <div class="container__center">
             <span>Led Status: </span><span id="ledStatusValue">Off</span><br><br>
-            <input type="button" id="button-led" value="Turn On Leds" onclick="toggleLeds()">
+            <input type="button" id="button-led" value="Turn On White Leds" onclick="toggleLeds()">
+            <br><br>
+            <div class="container container--leds">
+                <span>Red: </span><input type="range" id="redled" name="red" min="0" max="255" value="0"><br>
+                <span>Green: </span><input type="range" id="greenled" name="green" min="0" max="255" value="0"><br>
+                <span>Blue: </span><input type="range" id="blueled" name="blue" min="0" max="255" value="0">
+            </div><br>
+            <input type="button" id="button-led-update" value="Update Color Leds" onclick="updateLedColor()">
         </div>
     </body>
 </html>

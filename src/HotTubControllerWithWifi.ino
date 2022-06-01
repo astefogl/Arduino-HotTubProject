@@ -690,12 +690,41 @@ void handleLedStatus() {
 }
 
 void handleColorUpdate() {
-  int returnCode = 200;
+  int numArgs = server.args();
   String strReturn;
+  int returnCode = 200;
 
-  strReturn = "{\"setLedColor\": \"";
-  strReturn += "some color combo";
-  strReturn += "\", \"message\": \"Led Color Updated Updated\"}";
+  if (numArgs == 0) {
+    Serial.println("BAD ARGS");
+    strReturn = "{\"message\": \"Temp update failed\"}";
+    returnCode = 500;
+  } else {
+    for (int i = 0; i < numArgs; i++) {
+      Serial.print(server.argName(i));
+      Serial.print(": ");
+      Serial.println(server.arg(i));
+      if (server.argName(i) == "red") {
+        ledRedValue = server.arg(i).toInt();
+      }
+      if (server.argName(i) == "green") {
+        ledGreenValue = server.arg(i).toInt();
+      }
+      if (server.argName(i) == "blue") {
+        ledBlueValue = server.arg(i).toInt();
+      }
+    }
+    updateLedColors();
+  }
+
+  strReturn = "{\"blueValue\": \"";
+  strReturn += ledBlueValue;
+  strReturn += "\", \"redValue\": \"";
+  strReturn += ledRedValue;
+  strReturn += "\", \"greenValue\": \"";
+  strReturn += ledGreenValue;
+  strReturn += "\", \"status\": \"";
+  strReturn += getLedStatus();
+  strReturn += "\", \"message\": \"Led Status Updated\"}";
 
   server.send(returnCode, "application/json", strReturn);
 }
@@ -739,13 +768,14 @@ String landingPageHtml()
   html += "const ajaxGet = (url, onSuccess) => { var xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = () => { if (xhr.status === 200) { var response = JSON.parse(xhr.responseText); onSuccess(response); } }; xhr.send(); };\n";
   html += "const updateTemp = () => { var el = document.querySelector('#adjustTemp');  var temp = parseInt(el.innerHTML); var url = '/update/temp'; var send = 'newSetTemp=' + temp; const onSuccess = (response) => { setTemp(response.setTemp); }, onFail = () => { console.log('update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
   html += "const getStatus = () => { const onSuccess = (response) => { waterTemp(response.waterTemp); setTemp(response.setTemp); updateHeaterStatus(response.heaterStatus); updateLedStatus(response.ledStatus); }; ajaxGet('/get/status', onSuccess); };\n";
-  html += "const setTemp = (temp) => { document.querySelector('#setTemp').innerHTML = temp; };\n";
+  html += "const setTemp = ( temp) => { document.querySelector('#setTemp').innerHTML = temp; };\n";
   html += "const waterTemp = (temp) => { document.querySelector('#waterTemp').innerHTML = temp; };\n";
   html += "const togglePump = (pumpNum) => { var pumpStatus = pumpNum == 1 ? pump1Status : pump2Status; pumpStatus = pumpStatus == 1 ? 0 : 1; var url = '/update/pump/status'; var send = 'pumpNum=' + pumpNum + '&pumpStatus=' + pumpStatus; const onSuccess = (response) => { updateButton('Pump ' + response.pumpNum, response.status, '#button-pump' + response.pumpNum); }, onFail = () => { console.log('pump ' + pumpNum + ' toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
-  html += "const updateButton = (pump, status, button) => { var statusString = status == 0 ? 'Turn On ' : 'Turn Off '; var value = statusString + pump; switch (pump) { case 'Pump 1': pump1Status = status; break; case 'Pump 2': pump2Status = status; break; case 'Leds': ledStatus = status; break; }; document.querySelector(button).value = value; };\n";
+  html += "const updateButton = (pump, status, button) => { var statusString = status == 0 ? 'Turn On ' : 'Turn Off '; var value = statusString + pump; switch (pump) { case 'Pump 1': pump1Status = status; break; case 'Pump 2': pump2Status = status; break; case 'Leds': ledStatus = status; if (status == 0) value = statusString + 'White ' + pump; break; }; document.querySelector(button).value = value; };\n";
   html += "const updateHeaterStatus = (status) => { document.querySelector('#heaterStatusValue').innerHTML = status; };\n";
   html += "const updateLedStatus = (status) => { document.querySelector('#ledStatusValue').innerHTML = status == 1 ? 'On' : 'Off'; };\n";
   html += "const toggleLeds = () => { var url = '/update/led/status'; ledStatus = ledStatus == 1 ? 0 : 1; var send = 'ledStatus=' + ledStatus; const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, onFail = () => { console.log('led toggle failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
+  html += "const updateLedColor = () => { var url = '/update/ledColor'; var ledContainer = document.querySelector('.container--leds'); var red = ledContainer.querySelector('#redled').value; var green = ledContainer.querySelector('#greenled').value; var blue = ledContainer.querySelector('#blueled').value; var send = 'red=' + red + '&green=' + green + '&blue=' + blue; const onSuccess = (response) => { updateButton('Leds', response.status, '#button-led'); updateLedStatus(response.status); }, onFail = () => { console.log('Led color update failed'); }; ajaxPost(url, send, onSuccess, onFail); };\n";
   html += "setInterval(getStatus, 10000);\n";
   html += "</script>\n";
   html += "</head>\n";
@@ -783,14 +813,27 @@ String landingPageHtml()
   html += "<input type=\"button\" id=\"button-pump2\" value=\"Turn ";
   html += pump2On ? "Off" : "On"; 
   html += " Pump 2\" onclick=\"togglePump(2)\">\n";
-  html += "</div>\n";
+  html += "</div><br>\n";
   html += "<div class=\"container__center\">\n";
   html += "<span>Led Status: </span><span id=\"ledStatusValue\">";
   html += getLedStatus() ? "On" : "Off";
   html += "</span><br><br>\n";
   html += "<input type=\"button\" id=\"button-led\" value=\"Turn ";
   html += getLedStatus() ? "Off" : "On";
-  html += " Leds\" onclick=\"toggleLeds()\">\n";
+  html += " White Leds\" onclick=\"toggleLeds()\">\n";
+  html += "<br><br>\n";
+  html += "<div class=\"container container--leds\">\n";
+  html += "<span>Red: </span><input type=\"range\" id=\"redled\" name=\"red\" min=\"0\" max=\"255\" value=\"";
+  html += ledRedValue;
+  html += "\"><br>\n";
+  html += "<span>Green: </span><input type=\"range\" id=\"greenled\" name=\"green\" min=\"0\" max=\"255\" value=\"";
+  html += ledGreenValue;
+  html += "\"><br>\n";
+  html += "<span>Blue: </span><input type=\"range\" id=\"blueled\" name=\"blue\" min=\"0\" max=\"255\" value=\"";
+  html += ledBlueValue;
+  html += "\">\n";
+  html += "</div><br>\n";
+  html += "<input type=\"button\" id=\"button-led-update\" value=\"Update Color Leds\" onclick=\"updateLedColor()\">\n";
   html += "</div>\n";
   html += "</body>\n";
   html += "</html>\n";
