@@ -121,9 +121,14 @@ bool checkLastButtonPush(unsigned long lastPressTime, int delay) {
 
 void togglePump1Low(bool state) {
   if (state) {
-    pump1LowToggled = true;
-    digitalWrite(pump1LowPin, HIGH);
-  } else {
+    if (pump1HighToggled) {
+      state = false;
+    } else {
+      pump1LowToggled = true;
+      digitalWrite(pump1LowPin, HIGH);
+    }
+  }
+  if (!state) {
     pump1LowToggled = false;
     digitalWrite(pump1LowPin, LOW);
   }
@@ -131,6 +136,9 @@ void togglePump1Low(bool state) {
 
 void togglePump1High(bool state) {
   if (state) {
+    if (pump1LowToggled) {
+      togglePump1Low(false);
+    }
     pump1HighToggled = true;
     digitalWrite(pump1HighPin, HIGH);
   } else {
@@ -151,6 +159,9 @@ void togglePump2(bool state) {
 
 void toggleHeater(bool state) {
   if (state) {
+    if (!pump1LowToggled && !pump1HighToggled) {
+      togglePump1Low(true);
+    }
     heaterToggled = true;
     digitalWrite(heaterPin, HIGH);
   } else {
@@ -463,9 +474,11 @@ void changeTempIcon() {
 
 void checkPumpAndHeater() {
   if (restartHeaterTemperature + 1 > currentTemperature) {
-    if (!heaterOn || !pump1LowOn) {
+    if (!heaterOn) {
       heaterOn = true;
-      pump1LowOn = true;
+      if (!pump1HighOn) {
+        pump1LowOn = true;
+      }
     }
   } else {
     if (heaterOn || pump1LowOn) {
