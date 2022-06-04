@@ -43,7 +43,7 @@ unsigned long lastLedButtonPress = 0;
 #define pump1HighPin 25 //21
 #define heaterPin 32 // 23 
 #define pump2Pin 33 // 22
-//#define ledRelayPin 5
+#define ledRelayPin 5
 
 // led colors
 #define ledRedPin 22
@@ -52,9 +52,9 @@ unsigned long lastLedButtonPress = 0;
 #define ledRedChannel 2
 #define ledGreenChannel 3
 #define ledBlueChannel 1
-#define defaultWhiteRedValue 50
+#define defaultWhiteRedValue 255
 #define defaultWhiteGreenValue 255
-#define defaultWhiteBlueValue 100
+#define defaultWhiteBlueValue 255
 
 int ledRedValue = 0;
 int ledBlueValue = 0;
@@ -222,13 +222,13 @@ void IRAM_ATTR ledToggle() {
     Serial.println("ledToggle");
     lastLedButtonPress = millis();
 
-    // if (ledOn) {
-    //   digitalWrite(ledRelayPin, LOW);
-    //   ledOn = false;
-    // } else {
-    //   digitalWrite(ledRelayPin, HIGH);
-    //   ledOn = true;
-    // }
+    if (ledOn) {
+      digitalWrite(ledRelayPin, LOW);
+      ledOn = false;
+    } else {
+      digitalWrite(ledRelayPin, HIGH);
+      ledOn = true;
+    }
   }
 }
 /* #endregion*/
@@ -255,7 +255,7 @@ void setup(void) {
   pinMode(pump1HighPin, OUTPUT);
   pinMode(heaterPin, OUTPUT);
   pinMode(pump2Pin, OUTPUT);
-  //pinMode(ledRelay, OUTPUT);
+  pinMode(ledRelayPin, OUTPUT);
 
   ledcAttachPin(ledBluePin, 1);
   ledcAttachPin(ledRedPin, 2);
@@ -487,6 +487,12 @@ void updateLedColors() {
   ledcWrite(ledBlueChannel, ledBlueValue);
   ledcWrite(ledRedChannel, ledRedValue);
   ledcWrite(ledGreenChannel, ledGreenValue);
+
+  if (getLedStatus()) {
+    digitalWrite(ledRelayPin, HIGH);
+  } else {
+    digitalWrite(ledRelayPin, LOW);
+  }
 }
 
 int getLedStatus() {

@@ -9,7 +9,10 @@
 	],
 	"settings": {
 		"files.associations": {
-			"bitset": "cpp"
+			"bitset": "cpp",
+			"queue": "cpp",
+			"stack": "cpp",
+			"random": "cpp"
 		}
 	}
 }
