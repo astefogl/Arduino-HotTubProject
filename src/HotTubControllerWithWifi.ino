@@ -33,11 +33,15 @@ BUSY -> d4
 
 #define SHORT_BUTTON_PRESS_DELAY 300
 #define LONG_BUTTON_PRESS_DELAY 1000
+#define LED_AUTO_TURN_OFF_DELAY 1000 * 60 * 30 // 30 minutes
+#define PUMP_AUTO_TURN_OFF_DELAY 1000 * 60 * 15  // 15 minutes
 unsigned long lastTempUpButtonPress = 0;
 unsigned long lastTempDownButtonPress = 0;
 unsigned long lastPump1ButtonPress = 0;
 unsigned long lastPump2ButtonPress = 0;
 unsigned long lastLedButtonPress = 0;
+unsigned long pumpTurnOnTime = 0;
+unsigned long ledTurnOnTime = 0;
 
 #define pump1LowPin 26 // 19 //
 #define pump1HighPin 25 //21
@@ -112,7 +116,7 @@ TaskHandle_t wifiTask;
 SimpleTimer timer;
 
 /* #region Hot Tub Controller Interupts*/
-bool checkLastButtonPush(unsigned long lastPressTime, int delay) {
+bool checkTimer(unsigned long lastPressTime, int delay) {
   if ((millis() - lastPressTime) > delay) {
     return true;
   }
@@ -129,6 +133,7 @@ void togglePump1Low(bool state) {
     }
   }
   if (!state) {
+    pump1LowOn = false;
     pump1LowToggled = false;
     digitalWrite(pump1LowPin, LOW);
   }
@@ -139,19 +144,26 @@ void togglePump1High(bool state) {
     if (pump1LowToggled) {
       togglePump1Low(false);
     }
+    pumpTurnOnTime = millis();
     pump1HighToggled = true;
     digitalWrite(pump1HighPin, HIGH);
   } else {
+    pump1HighOn = false;
     pump1HighToggled = false;
     digitalWrite(pump1HighPin, LOW);
+    if (heaterOn) {
+      togglePump1Low(true);
+    }
   }
 }
 
 void togglePump2(bool state) {
   if (state) {
     pump2Toggled = true;
+    pumpTurnOnTime = millis();
     digitalWrite(pump2Pin, HIGH);
   } else {
+    pump2On = false;
     pump2Toggled = false;
     digitalWrite(pump2Pin, LOW);
   }
@@ -170,9 +182,26 @@ void toggleHeater(bool state) {
   }
 }
 
+void toggleLed(bool state) {
+  if (state) {
+    ledTurnOnTime = millis();
+
+    ledBlueValue = 255;
+    updateLedColors();
+    ledOn = true;
+  } else {
+    ledBlueValue = 0;
+    ledRedValue = 0;
+    ledGreenValue = 0;
+    updateLedColors();
+    //digitalWrite(ledRelayPin, LOW);
+    ledOn = false;
+  }
+}
+
 void IRAM_ATTR tempUp() {
   if (digitalRead(tempUpButton) == HIGH) {
-    if (checkLastButtonPush(lastTempUpButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
+    if (checkTimer(lastTempUpButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
       Serial.println("TempUp");
       if (setTemperature + 1 <= maxTemp) {
         setTemperature += 1;
@@ -185,7 +214,7 @@ void IRAM_ATTR tempUp() {
 
 void IRAM_ATTR tempDown() {
   if (digitalRead(tempDownButton) == HIGH) {
-    if (checkLastButtonPush(lastTempDownButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
+    if (checkTimer(lastTempDownButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
       Serial.println("TempDown");
       if (setTemperature - 1 >= minTemp) {
         setTemperature -= 1;
@@ -198,7 +227,7 @@ void IRAM_ATTR tempDown() {
 
 void IRAM_ATTR pump1Toggle() {
   if (digitalRead(pump1Button) == HIGH) {
-    if (checkLastButtonPush(lastPump1ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
+    if (checkTimer(lastPump1ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
       Serial.println("pump1Toggle");
       lastPump1ButtonPress = millis();
 
@@ -214,8 +243,8 @@ void IRAM_ATTR pump1Toggle() {
 
 void IRAM_ATTR pump2Toggle() {
   if (digitalRead(pump2Button) == HIGH) {
-    if (checkLastButtonPush(lastPump2ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-      Serial.println("pump2Toggle");
+    if (checkTimer(lastPump2ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
+      Serial.print("pump2Toggle: ");
       lastPump2ButtonPress = millis();
 
       if (pump2On) {
@@ -224,21 +253,20 @@ void IRAM_ATTR pump2Toggle() {
       } else {
         pump2On = true;
       }
+      Serial.println(pump2On);
     }
   }
 }
 
 void IRAM_ATTR ledToggle() {
-  if (checkLastButtonPush(lastLedButtonPress, LONG_BUTTON_PRESS_DELAY)) {
+  if (checkTimer(lastLedButtonPress, LONG_BUTTON_PRESS_DELAY)) {
     Serial.println("ledToggle");
     lastLedButtonPress = millis();
 
     if (ledOn) {
-      digitalWrite(ledRelayPin, LOW);
-      ledOn = false;
+      toggleLed(false);
     } else {
-      digitalWrite(ledRelayPin, HIGH);
-      ledOn = true;
+      toggleLed(true);
     }
   }
 }
@@ -300,6 +328,7 @@ void setup(void) {
   timer.setInterval(300, changeTempIcon); // 300 = .3 sec
   timer.setInterval(1000, updateTemp); // 1 sec
   timer.setInterval(1000, toggleRelay); // 1 sec
+  timer.setInterval(1000, autoTurnOff); // 1 sec
 
   xTaskCreatePinnedToCore(
     hotTubControllerTaskCode,   /* Task function. */
@@ -332,6 +361,16 @@ void hotTubControllerTaskCode( void * pvParameters ){
   }
 }
 
+void autoTurnOff() {
+  if (checkTimer(pumpTurnOnTime, PUMP_AUTO_TURN_OFF_DELAY)) {
+    togglePump1High(false);
+    togglePump2(false);
+  }
+  if (checkTimer(ledTurnOnTime, LED_AUTO_TURN_OFF_DELAY)) {
+    toggleLed(false);
+  }
+}
+
 void toggleRelay() {
   if (!pump1LowOn)
     togglePump1Low(false);
@@ -360,20 +399,24 @@ void toggleRelay() {
   // Serial.println(heaterToggled);
 
   if (pump1LowOn && !pump1LowToggled) {
+    Serial.println("turn on pump1 low");
     // Serial.print("pump1 On, Toggled: ");
     // Serial.println(pump1LowOn, pump1LowToggled);
     togglePump1Low(true);
     return;
   }
   if (heaterOn && !heaterToggled) {
+    Serial.println('turn on heater');
     toggleHeater(true);
     return;
   }
   if (pump1HighOn && !pump1HighToggled) {
+    Serial.println('turn on pump1high');
     togglePump1High(true);
     return;
   }
   if (pump2On && !pump2Toggled) {
+    Serial.println('turn on pump2');
     togglePump2(true);
     return;
   }
@@ -473,7 +516,15 @@ void changeTempIcon() {
 }
 
 void checkPumpAndHeater() {
-  if (restartHeaterTemperature + 1 > currentTemperature) {
+  Serial.print("RestartTemp: ");
+  Serial.println(restartHeaterTemperature);
+  Serial.print("CurrentTemp: ");
+  Serial.println(currentTemperature);
+  Serial.print("setTemp: ");
+  Serial.println(setTemperature);
+
+  if (restartHeaterTemperature + 1.0 > currentTemperature) {
+    restartHeaterTemperature = setTemperature;
     if (!heaterOn) {
       heaterOn = true;
       if (!pump1HighOn) {
@@ -481,13 +532,15 @@ void checkPumpAndHeater() {
       }
     }
   } else {
-    if (heaterOn || pump1LowOn) {
       togglePump1Low(false);
       toggleHeater(false);
-      restartHeaterTemperature = setTemperature - 3;
+      restartHeaterTemperature = setTemperature - 2;
       heaterOn = false;
       pump1LowOn = false;
-    }
+  }
+  if (heaterOn && !pump1LowOn && !pump1HighOn) 
+  {
+    pump1LowOn = true;
   }
 }
 
@@ -500,7 +553,7 @@ void updateLedColors() {
   ledcWrite(ledBlueChannel, ledBlueValue);
   ledcWrite(ledRedChannel, ledRedValue);
   ledcWrite(ledGreenChannel, ledGreenValue);
-
+  Serial.println('UpdateColors');
   if (getLedStatus()) {
     digitalWrite(ledRelayPin, HIGH);
   } else {
