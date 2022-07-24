@@ -202,7 +202,7 @@ void toggleLed(bool state) {
 void IRAM_ATTR tempUp() {
   if (digitalRead(tempUpButton) == HIGH) {
     if (checkTimer(lastTempUpButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
-      Serial.println("TempUp");
+      //Serial.println("TempUp");
       if (setTemperature + 1 <= maxTemp) {
         setTemperature += 1;
         restartHeaterTemperature = setTemperature;
@@ -215,7 +215,7 @@ void IRAM_ATTR tempUp() {
 void IRAM_ATTR tempDown() {
   if (digitalRead(tempDownButton) == HIGH) {
     if (checkTimer(lastTempDownButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
-      Serial.println("TempDown");
+      //Serial.println("TempDown");
       if (setTemperature - 1 >= minTemp) {
         setTemperature -= 1;
         restartHeaterTemperature = setTemperature;
@@ -228,7 +228,7 @@ void IRAM_ATTR tempDown() {
 void IRAM_ATTR pump1Toggle() {
   if (digitalRead(pump1Button) == HIGH) {
     if (checkTimer(lastPump1ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-      Serial.println("pump1Toggle");
+      //Serial.println("pump1Toggle");
       lastPump1ButtonPress = millis();
 
       if (pump1HighOn) {
@@ -244,7 +244,7 @@ void IRAM_ATTR pump1Toggle() {
 void IRAM_ATTR pump2Toggle() {
   if (digitalRead(pump2Button) == HIGH) {
     if (checkTimer(lastPump2ButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-      Serial.print("pump2Toggle: ");
+      //Serial.print("pump2Toggle: ");
       lastPump2ButtonPress = millis();
 
       if (pump2On) {
@@ -253,14 +253,14 @@ void IRAM_ATTR pump2Toggle() {
       } else {
         pump2On = true;
       }
-      Serial.println(pump2On);
+      //Serial.println(pump2On);
     }
   }
 }
 
 void IRAM_ATTR ledToggle() {
   if (checkTimer(lastLedButtonPress, LONG_BUTTON_PRESS_DELAY)) {
-    Serial.println("ledToggle");
+    //Serial.println("ledToggle");
     lastLedButtonPress = millis();
 
     if (ledOn) {
@@ -406,17 +406,17 @@ void toggleRelay() {
     return;
   }
   if (heaterOn && !heaterToggled) {
-    Serial.println('turn on heater');
+    //Serial.println('turn on heater');
     toggleHeater(true);
     return;
   }
   if (pump1HighOn && !pump1HighToggled) {
-    Serial.println('turn on pump1high');
+    //Serial.println('turn on pump1high');
     togglePump1High(true);
     return;
   }
   if (pump2On && !pump2Toggled) {
-    Serial.println('turn on pump2');
+    //Serial.println('turn on pump2');
     togglePump2(true);
     return;
   }
@@ -516,12 +516,12 @@ void changeTempIcon() {
 }
 
 void checkPumpAndHeater() {
-  Serial.print("RestartTemp: ");
-  Serial.println(restartHeaterTemperature);
-  Serial.print("CurrentTemp: ");
-  Serial.println(currentTemperature);
-  Serial.print("setTemp: ");
-  Serial.println(setTemperature);
+  // Serial.print("RestartTemp: ");
+  // Serial.println(restartHeaterTemperature);
+  // Serial.print("CurrentTemp: ");
+  // Serial.println(currentTemperature);
+  // Serial.print("setTemp: ");
+  // Serial.println(setTemperature);
 
   if (restartHeaterTemperature + 1.0 > currentTemperature) {
     restartHeaterTemperature = setTemperature;
@@ -553,7 +553,7 @@ void updateLedColors() {
   ledcWrite(ledBlueChannel, ledBlueValue);
   ledcWrite(ledRedChannel, ledRedValue);
   ledcWrite(ledGreenChannel, ledGreenValue);
-  Serial.println('UpdateColors');
+  // Serial.println('UpdateColors');
   if (getLedStatus()) {
     digitalWrite(ledRelayPin, HIGH);
   } else {
@@ -652,21 +652,21 @@ void handleUpdateTemp() {
   String strReturn;
   int returnCode = 200;
   if (numArgs == 0) {
-    Serial.println("BAD ARGS");
+    // Serial.println("BAD ARGS");
     strReturn = "{\"message\": \"Temp update failed\"}";
     returnCode = 500;
   } else {
     for (int i = 0; i < numArgs; i++) {
-      Serial.print(server.argName(i));
-      Serial.print(": ");
-      Serial.println(server.arg(i));
+      // Serial.print(server.argName(i));
+      // Serial.print(": ");
+      // Serial.println(server.arg(i));
       if (server.argName(i) == "newSetTemp") {
         setTemperature = server.arg(i).toInt();
         restartHeaterTemperature = server.arg(i).toInt();
-        Serial.print("New Set Temperature: ");
-        Serial.println(setTemperature);
-        Serial.print("New Restart Temperature: ");
-        Serial.println(restartHeaterTemperature);
+        // Serial.print("New Set Temperature: ");
+        // Serial.println(setTemperature);
+        // Serial.print("New Restart Temperature: ");
+        // Serial.println(restartHeaterTemperature);
       }
     }
     strReturn = "{\"setTemp\": \"";
@@ -685,7 +685,7 @@ void handlePumpStatus() {
   int returnCode = 200;
 
   if (numArgs == 0) {
-    Serial.println("BAD ARGS");
+    // Serial.println("BAD ARGS");
   } else {
     for (int i = 0; i < numArgs; i++) {
       if (server.argName(i) == "pumpNum") {
@@ -720,14 +720,14 @@ void handleLedStatus() {
   int returnCode = 200;
 
   if (numArgs == 0) {
-    Serial.println("BAD ARGS");
+    // Serial.println("BAD ARGS");
     strReturn = "{\"message\": \"Temp update failed\"}";
     returnCode = 500;
   } else {
     for (int i = 0; i < numArgs; i++) {
-      Serial.print(server.argName(i));
-      Serial.print(": ");
-      Serial.println(server.arg(i));
+      // Serial.print(server.argName(i));
+      // Serial.print(": ");
+      // Serial.println(server.arg(i));
       if (server.argName(i) == "ledStatus") {
         int ledStatus = server.arg(i).toInt();
         if (ledStatus == 1) {
@@ -735,14 +735,14 @@ void handleLedStatus() {
           ledRedValue = defaultWhiteRedValue;
           ledGreenValue = defaultWhiteGreenValue;
           updateLedColors();
-          Serial.println("Led default White Color On");
+          // Serial.println("Led default White Color On");
         }
         if (ledStatus == 0) {
           ledBlueValue = 0;
           ledRedValue = 0;
           ledGreenValue = 0;
           updateLedColors();
-          Serial.println("Leds off");
+          // Serial.println("Leds off");
         }
       }
     }
@@ -767,14 +767,14 @@ void handleColorUpdate() {
   int returnCode = 200;
 
   if (numArgs == 0) {
-    Serial.println("BAD ARGS");
+    // Serial.println("BAD ARGS");
     strReturn = "{\"message\": \"Temp update failed\"}";
     returnCode = 500;
   } else {
     for (int i = 0; i < numArgs; i++) {
-      Serial.print(server.argName(i));
-      Serial.print(": ");
-      Serial.println(server.arg(i));
+      // Serial.print(server.argName(i));
+      // Serial.print(": ");
+      // Serial.println(server.arg(i));
       if (server.argName(i) == "red") {
         ledRedValue = server.arg(i).toInt();
       }
