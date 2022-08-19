@@ -32,6 +32,7 @@ BUSY -> d4
 #define pump2Button 39 //33
 #define ledButton 35 //32
 
+#define LONG_PRESS_TIME 500
 #define SHORT_BUTTON_PRESS_DELAY 300
 #define LONG_BUTTON_PRESS_DELAY 1000
 #define LED_AUTO_TURN_OFF_DELAY 1000 * 60 * 30 // 30 minutes
@@ -43,6 +44,7 @@ unsigned long lastPump2ButtonPress = 0;
 unsigned long lastLedButtonPress = 0;
 unsigned long pumpTurnOnTime = 0;
 unsigned long ledTurnOnTime = 0;
+unsigned long ledButtonPressedTime = 0;
 
 #define pump1LowPin 26 // 19 //
 #define pump1HighPin 25 //21
@@ -71,6 +73,8 @@ int ledGreenValue = 0;
 #define DEFAULTTEMPERATURE 100;
 
 //---Preferred Settings End
+bool ledButtonPressed = false;
+bool ledButtonToggled = false;
 
 int setTemperature;
 int restartHeaterTemperature;
@@ -317,7 +321,7 @@ void setup(void) {
   attachInterrupt(tempDownButton, tempDown, RISING);
   attachInterrupt(pump1Button, pump1Toggle, RISING);
   attachInterrupt(pump2Button, pump2Toggle, RISING);
-  attachInterrupt(ledButton, ledToggle, RISING);
+  // attachInterrupt(ledButton, ledToggle, RISING);
 
   tft.init();
   tft.setRotation(3);
@@ -359,7 +363,36 @@ void loop(void) {
 void hotTubControllerTaskCode( void * pvParameters ){
   for (;;) {
     timer.run();
+
+    checkLedButton();
     delay(10);
+  }
+}
+
+void checkLedButton()
+{
+  int buttonPressed = digitalRead(ledButton);
+  if (buttonPressed) {
+    if (checkTimer(lastLedButtonPress, SHORT_BUTTON_PRESS_DELAY)) {
+      lastLedButtonPress = millis();
+      
+      if (!ledButtonPressed) {
+        ledButtonPressedTime = millis();
+        ledButtonPressed = true;
+      }
+    }
+    if (ledButtonPressed && !ledButtonToggled && checkTimer(ledButtonPressedTime, LONG_PRESS_TIME)) {
+      ledButtonToggled = true;
+      if (ledOn) {
+        toggleLed(false);
+      } else {
+        toggleLed(true);
+      }
+    }
+  }
+  if (!buttonPressed && ledButtonPressed) {
+    ledButtonPressed = false;
+    ledButtonToggled = false;
   }
 }
 
