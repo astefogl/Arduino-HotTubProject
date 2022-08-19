@@ -93,8 +93,8 @@ int yPosCurrentTemp = 25;
 int yPosSetTemp = 70;
 enum iconStates { iconTempOff, iconTempLow, iconTemp1, iconTemp2, iconTemp3, iconTempHigh }; 
 
-int maxTemp = 107;
-int minTemp = 60;
+const int maxTemp = 107;
+const int minTemp = 60;
 
 ThermistorSensor thermistor(THERMISTORPIN);
 TFT_eSPI tft = TFT_eSPI();
