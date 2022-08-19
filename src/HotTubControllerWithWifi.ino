@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include "temperatureImages.h"
 #include <SimpleTimer.h>
+#include <CommonHTTPUpdateServer.h>
 // #include "NotoSansBold15.h"
 // #include "NotoSansBold36.h"
 /*
@@ -106,6 +107,7 @@ String hostname = "HotTub";
 WiFiClass scanWifi;
 CommonWifiManager wifiManager(localServerSsid, WiFi, scanWifi);
 WebServer server(80);
+CommonHTTPUpdateServer httpUpdateServer;
 
 String ssid;
 String password;
@@ -572,6 +574,7 @@ int getLedStatus() {
 /* #region wifi functionality */
 void wifiTaskCode( void * pvParameters ){
   wifiManager.connectToNetwork();
+  httpUpdateServer.setup(&server);
   
   server.on("/", handleLandingPage);
   server.on("/update/temp", HTTP_POST, handleUpdateTemp);
